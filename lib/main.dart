@@ -1,83 +1,90 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:android_intent_plus/android_intent.dart';
+import 'package:geolocator/geolocator.dart';
 
 void main() {
-  runApp(AlarmApp());
+  runApp(MyApp());
 }
 
-class AlarmApp extends StatelessWidget {
+class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: AlarmScreen(),
+      home: MosqueFinderScreen(),
     );
   }
 }
 
-class AlarmScreen extends StatelessWidget {
-  // Method to attempt opening the clock app or setting an alarm
-  Future<bool> openClockApp() async {
+class MosqueFinderScreen extends StatelessWidget {
+  // Function to get user's location and open Google Maps
+  Future<void> openGoogleMaps(BuildContext context) async {
     try {
-      // Try to open the clock app using URL schemes
-      const url = 'clock://'; // Common URL scheme for clock apps
-      if (await canLaunch(url)) {
-        await launch(url);
-        return true;
+      // Check and request location permission
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Please enable location services')),
+        );
+        return;
       }
 
-      // Fallback to Android Intent for setting alarms
-      final AndroidIntent intent = AndroidIntent(
-        action: 'android.intent.action.SET_ALARM',
-        arguments: {
-          'android.intent.extra.alarm.HOUR': 8, // Set the hour (24-hour format)
-          'android.intent.extra.alarm.MINUTES': 30, // Set the minutes
-          'android.intent.extra.alarm.SKIP_UI': false, // Show the UI
-        },
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Location permission denied')),
+          );
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Location permission denied forever')),
+        );
+        return;
+      }
+
+      // Get current position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
       );
 
-      await intent.launch();
-      return true;
+      // Google Maps URL with user's location and mosque search
+      final googleMapsUrl = Uri.parse(
+        'https://www.google.com/maps/search/mosque/@${position.latitude},${position.longitude},15z',
+      );
+
+      if (await canLaunchUrl(googleMapsUrl)) {
+        await launchUrl(
+          googleMapsUrl,
+          mode: LaunchMode.externalApplication,
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open Google Maps')),
+        );
+      }
     } catch (e) {
-      print('Error launching clock app: $e');
+      print('Error: $e');
+      print(e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
     }
-
-    return false; // No supported clock app found
-  }
-
-  // Method to show an error dialog if the clock app cannot be opened
-  void showErrorDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Error'),
-        content: Text(
-            'Could not open the clock app. Please set the alarm manually.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('OK'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Set Alarm'),
+        title: Text('Find Nearby Mosques'),
       ),
       body: Center(
         child: ElevatedButton(
-          onPressed: () async {
-            bool success = await openClockApp();
-            if (!success) {
-              showErrorDialog(context);
-            }
-          },
-          child: Text('Open Clock App'),
+          onPressed: () => openGoogleMaps(context),
+          child: Text('Search Nearby Mosques'),
         ),
       ),
     );
